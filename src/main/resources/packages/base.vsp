@@ -1,0 +1,623 @@
+{
+  "id": "base",
+  "name": "Base Braitenberg Species",
+  "version": "1.0.0",
+  "description": "Contains all 6 classic Braitenberg vehicle species demonstrating emergent behaviors",
+  "species": [
+    {
+      "id": "phototrope",
+      "name": "Phototrope",
+      "description": "Approaches light sources using crossed excitatory connections",
+      "radius": 10.0,
+      "wheelBase": 15.0,
+      "maxSpeed": 50.0,
+      "colorName": "blue",
+      "receptors": [
+        {
+          "id": "sensor_left",
+          "angleFrom": 0.7853981633974483,
+          "angleTo": 2.356194490192345,
+          "maxRange": 200.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        },
+        {
+          "id": "sensor_right",
+          "angleFrom": -2.356194490192345,
+          "angleTo": -0.7853981633974483,
+          "maxRange": 200.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        }
+      ],
+      "neuralNetworkTemplate": {
+        "neurodes": {
+          "input_left": {
+            "id": "input_left",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_right": {
+            "id": "input_right",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_left_motor": {
+            "id": "output_left_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_right_motor": {
+            "id": "output_right_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          }
+        },
+        "connections": [
+          {
+            "id": "c1",
+            "fromNeurodeId": "input_left",
+            "toNeurodeId": "output_right_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c2",
+            "fromNeurodeId": "input_right",
+            "toNeurodeId": "output_left_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "photophobe",
+      "name": "Photophobe",
+      "description": "Flees from light sources using parallel excitatory connections",
+      "radius": 10.0,
+      "wheelBase": 15.0,
+      "maxSpeed": 50.0,
+      "colorName": "red",
+      "receptors": [
+        {
+          "id": "sensor_left",
+          "angleFrom": 0.7853981633974483,
+          "angleTo": 2.356194490192345,
+          "maxRange": 200.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        },
+        {
+          "id": "sensor_right",
+          "angleFrom": -2.356194490192345,
+          "angleTo": -0.7853981633974483,
+          "maxRange": 200.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        }
+      ],
+      "neuralNetworkTemplate": {
+        "neurodes": {
+          "input_left": {
+            "id": "input_left",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_right": {
+            "id": "input_right",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_left_motor": {
+            "id": "output_left_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_right_motor": {
+            "id": "output_right_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          }
+        },
+        "connections": [
+          {
+            "id": "c1",
+            "fromNeurodeId": "input_left",
+            "toNeurodeId": "output_left_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c2",
+            "fromNeurodeId": "input_right",
+            "toNeurodeId": "output_right_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "explorer",
+      "name": "Explorer",
+      "description": "Explores environment while avoiding obstacles using inhibitory connections",
+      "radius": 10.0,
+      "wheelBase": 15.0,
+      "maxSpeed": 40.0,
+      "colorName": "green",
+      "receptors": [
+        {
+          "id": "sensor_front",
+          "angleFrom": -0.5235987755982988,
+          "angleTo": 0.5235987755982988,
+          "maxRange": 100.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        },
+        {
+          "id": "sensor_left",
+          "angleFrom": 0.5235987755982988,
+          "angleTo": 1.5707963267948966,
+          "maxRange": 100.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        },
+        {
+          "id": "sensor_right",
+          "angleFrom": -1.5707963267948966,
+          "angleTo": -0.5235987755982988,
+          "maxRange": 100.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        }
+      ],
+      "neuralNetworkTemplate": {
+        "neurodes": {
+          "bias": {
+            "id": "bias",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": true
+          },
+          "input_front": {
+            "id": "input_front",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_left": {
+            "id": "input_left",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_right": {
+            "id": "input_right",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_left_motor": {
+            "id": "output_left_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_right_motor": {
+            "id": "output_right_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          }
+        },
+        "connections": [
+          {
+            "id": "c1",
+            "fromNeurodeId": "bias",
+            "toNeurodeId": "output_left_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c2",
+            "fromNeurodeId": "bias",
+            "toNeurodeId": "output_right_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c3",
+            "fromNeurodeId": "input_front",
+            "toNeurodeId": "output_left_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c4",
+            "fromNeurodeId": "input_front",
+            "toNeurodeId": "output_right_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c5",
+            "fromNeurodeId": "input_left",
+            "toNeurodeId": "output_left_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c6",
+            "fromNeurodeId": "input_right",
+            "toNeurodeId": "output_right_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "aggressive",
+      "name": "Aggressive",
+      "description": "Charges at targets using crossed inhibitory connections",
+      "radius": 10.0,
+      "wheelBase": 15.0,
+      "maxSpeed": 60.0,
+      "colorName": "red",
+      "receptors": [
+        {
+          "id": "sensor_left",
+          "angleFrom": 0.0,
+          "angleTo": 0.7853981633974483,
+          "maxRange": 150.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        },
+        {
+          "id": "sensor_right",
+          "angleFrom": -0.7853981633974483,
+          "angleTo": 0.0,
+          "maxRange": 150.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        }
+      ],
+      "neuralNetworkTemplate": {
+        "neurodes": {
+          "bias": {
+            "id": "bias",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": true
+          },
+          "input_left": {
+            "id": "input_left",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_right": {
+            "id": "input_right",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_left_motor": {
+            "id": "output_left_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_right_motor": {
+            "id": "output_right_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          }
+        },
+        "connections": [
+          {
+            "id": "c1",
+            "fromNeurodeId": "bias",
+            "toNeurodeId": "output_left_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c2",
+            "fromNeurodeId": "bias",
+            "toNeurodeId": "output_right_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c3",
+            "fromNeurodeId": "input_left",
+            "toNeurodeId": "output_right_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c4",
+            "fromNeurodeId": "input_right",
+            "toNeurodeId": "output_left_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "coward",
+      "name": "Coward",
+      "description": "Flees from threats approaching from behind",
+      "radius": 10.0,
+      "wheelBase": 15.0,
+      "maxSpeed": 55.0,
+      "colorName": "green",
+      "receptors": [
+        {
+          "id": "sensor_rear_left",
+          "angleFrom": 1.5707963267948966,
+          "angleTo": 3.141592653589793,
+          "maxRange": 150.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        },
+        {
+          "id": "sensor_rear_right",
+          "angleFrom": -3.141592653589793,
+          "angleTo": -1.5707963267948966,
+          "maxRange": 150.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 10.0
+        }
+      ],
+      "neuralNetworkTemplate": {
+        "neurodes": {
+          "input_left": {
+            "id": "input_left",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_right": {
+            "id": "input_right",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_left_motor": {
+            "id": "output_left_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_right_motor": {
+            "id": "output_right_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          }
+        },
+        "connections": [
+          {
+            "id": "c1",
+            "fromNeurodeId": "input_left",
+            "toNeurodeId": "output_left_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c2",
+            "fromNeurodeId": "input_right",
+            "toNeurodeId": "output_right_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "paranoid",
+      "name": "Paranoid",
+      "description": "Avoids threats from all directions using complex sensor array",
+      "radius": 10.0,
+      "wheelBase": 15.0,
+      "maxSpeed": 45.0,
+      "colorName": "blue",
+      "receptors": [
+        {
+          "id": "sensor_front",
+          "angleFrom": -0.7853981633974483,
+          "angleTo": 0.7853981633974483,
+          "maxRange": 120.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        },
+        {
+          "id": "sensor_rear",
+          "angleFrom": 2.356194490192345,
+          "angleTo": -2.356194490192345,
+          "maxRange": 120.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        },
+        {
+          "id": "sensor_left",
+          "angleFrom": 0.7853981633974483,
+          "angleTo": 2.356194490192345,
+          "maxRange": 120.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        },
+        {
+          "id": "sensor_right",
+          "angleFrom": -2.356194490192345,
+          "angleTo": -0.7853981633974483,
+          "maxRange": 120.0,
+          "sensitivity": 1.0,
+          "colorFilter": "white",
+          "threshold": 8.0
+        }
+      ],
+      "neuralNetworkTemplate": {
+        "neurodes": {
+          "bias": {
+            "id": "bias",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": true
+          },
+          "input_front": {
+            "id": "input_front",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_rear": {
+            "id": "input_rear",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_left": {
+            "id": "input_left",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "input_right": {
+            "id": "input_right",
+            "type": "INPUT",
+            "threshold": 0,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_left_motor": {
+            "id": "output_left_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          },
+          "output_right_motor": {
+            "id": "output_right_motor",
+            "type": "OUTPUT",
+            "threshold": 1,
+            "firedPreviousTick": false,
+            "willFireNextTick": false
+          }
+        },
+        "connections": [
+          {
+            "id": "c1",
+            "fromNeurodeId": "bias",
+            "toNeurodeId": "output_left_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c2",
+            "fromNeurodeId": "bias",
+            "toNeurodeId": "output_right_motor",
+            "type": "EXCITER",
+            "weight": 1.0
+          },
+          {
+            "id": "c3",
+            "fromNeurodeId": "input_front",
+            "toNeurodeId": "output_left_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c4",
+            "fromNeurodeId": "input_front",
+            "toNeurodeId": "output_right_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c5",
+            "fromNeurodeId": "input_rear",
+            "toNeurodeId": "output_left_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c6",
+            "fromNeurodeId": "input_rear",
+            "toNeurodeId": "output_right_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c7",
+            "fromNeurodeId": "input_left",
+            "toNeurodeId": "output_left_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          },
+          {
+            "id": "c8",
+            "fromNeurodeId": "input_right",
+            "toNeurodeId": "output_right_motor",
+            "type": "INHIBITOR",
+            "weight": 1.0
+          }
+        ]
+      }
+    }
+  ]
+}
