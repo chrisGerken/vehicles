@@ -1,0 +1,39 @@
+Design changes to make:
+
+1) Instead of using Tomcat, use Jetty, the embedded web server component from org.eclipse.jetty. Instead of starting and stopping Tomcat and the deploying a webjar to Tomcat, we would instead simply start the java application which, in turn would start and stop jetty and our http server
+
+2) Having an HTTP server means that there may be multiple concurrent simulations, each independently administered. There will always be a single user, but that user may run multiple simulations, each on it's own tab of a browser. This also means that the http api's need to include a simulation id so that the server can act against the correct simulation.
+
+3) Each simulation should be implemented as a long-running process that can be started, stopped and queried by the http api's. Furthermore, as the computation load increases exponentially with larger numbers of vehicles in a simulation or more receptors per vehicle, it will be necessary to perform the simulation of the vehicles in a multi-threaded manner. The number of threads should be a property of the simulation definition as well as a value that can be overridden during the running of a simulation.
+
+4) Vehicle specie definitions should be editable, browsable and persisted. Species may be packaged for deployment, sharing and reuse in a reusage package file.  There should be a base reusable package file containing the 6 original species (attraction, avoidance, aggression, etc) and an assortment of common static simulation objects (light, quasar, etc.)
+
+5) Simulation definitions should be able to refer to contain specie definitions as well as reference species definitions in other simulations or reusable species definition packages. 
+
+6) Static simulation object definitions can also be edited, browsed and persisted in simulation configurations and in reusable packages.
+
+7) A static simulation object may be a point in space with no width or length or a wall from one point to another.
+
+8) Height isn't a consideration for this simulator. All objects exist on the x-y plane.
+
+9) How to deal with collisions between simulation objects and other simulation object or arena walls will be a configurable property of a simulation. Values can be: 
+
+"none" - collisions are not detected and vehicles pass through other objects. Vehicles will break if the pass through an arena boundry that does not wrap.
+"break" - collisions are detected and vehicles will break other simulation objects when there is a collision
+"bounce" - vehicles bounce off of other simulation objects when there is a collision
+
+these configuarion values may be specified on a per-color basis. For example, a vehicle may break blue lights but pass through red vehicles.
+
+10) Color names can be defined using rgb and these color definitions can be saved in simulation and reusable package configuration files.
+
+11) a species may have a color specified. If no color is specified, each vehicle with that species must have it's own color specified. 
+
+12) Add restful api's to load, save and modify reusable packages and simulation configurations Save loaded and modified configurations so that they may be used the next time the application is run.
+
+13) Receptors see colors, so a receptor will not see another vehicle that is a different color than the color seen by the receptor.
+
+14) When calculating neurode firings, use all of the neurode outputs from the previous clock tick to calculate all of the nuerode outputs for this clock tick. In this way inputs from the receptors run through the system in waves.
+
+15) Receptors act as capacitors saving up light they receive from correctly colored objects within the receptors' ranges. Objects further away will be dimmer and increase the sum of light recieved by less than would objects that are closer. When the amount of accrued light passes a threshhold, the accrued sum is reduced by that threshhold amount and the receptor will fire on the next clock tick. The receptor will not fire any other time.
+
+16) Each neurode has an integer threshhold which must be met or exceeded by the number of firing excitatory connections coming into the neurode in order for that neurode to fire on the next clock tick. Regardless of whether or not the threshhold is met, the neurode will not fire if an inhibitory connection fired on the previous clock tick. Neurodes do not accrue counts of inbound connection firings from clock tick to clock tick.

@@ -18,24 +18,33 @@
 - `id: String` - Unique identifier
 - `x: double` - X coordinate
 - `y: double` - Y coordinate
-- `color: Color` - RGB color
+- `colorName: String` - Reference to named color definition
 - `brightness: double` - Brightness level (0.0 to 1.0)
-- `radius: double` - Collision radius
+- `radius: double` - Collision radius (0 for point sources)
 
 **Methods:**
 - `getBoundingBox(): Rectangle` - For collision detection
 - `distanceTo(other: SimulationObject): double` - Distance calculation
+- `getColor(): Color` - Resolves color name to RGB color
 
 ## StaticSimulationObject
 **Inherits from:** SimulationObject
 
 **Properties:**
-- `shape: Shape` - Circle, rectangle, or polygon
+- `type: ObjectType` - POINT or WALL
+- `x2: double` - End X coordinate (for WALL type only)
+- `y2: double` - End Y coordinate (for WALL type only)
 - `emitsBrightness: boolean` - Whether it's a light source
+
+**Types:**
+- `POINT`: Point light source at (x, y) with specified radius (can be 0)
+- `WALL`: Line segment from (x, y) to (x2, y2)
 
 **Additional Notes:**
 - Immutable position after creation
 - Can be used as obstacles or light sources for receptors
+- Point sources emit brightness; walls typically used as obstacles
+- Walls can be packaged and reused across simulations
 
 ## Vehicle
 **Inherits from:** SimulationObject
@@ -47,6 +56,7 @@
 - `wheelBase: double` - Distance between left and right wheels
 - `maxSpeed: double` - Maximum forward speed
 - `species: Species` - Reference to species definition
+- `colorName: String` - Vehicle-specific color (optional, overrides species color)
 - `receptors: List<Receptor>` - Sensor array (defined by species)
 - `neuralNetwork: NeuralNetworkInstance` - Instance of species neural network
 
@@ -54,20 +64,34 @@
 - `updateMotorSpeeds()` - Called after neural network evaluation
 - `updatePosition(deltaTime)` - Physics integration
 - `sense(): Map<Receptor, double>` - Read all receptor values
+- `getEffectiveColor(): String` - Returns vehicle color if set, otherwise species color
+
+**Additional Notes:**
+- If species has a color, vehicle inherits it unless vehicle-specific color is set
+- If species has no color, vehicle MUST have its own color specified
 
 ## Species
 **Properties:**
 - `id: String` - Unique identifier
 - `name: String` - Human-readable name
+- `colorName: String` - Default color for vehicles (optional)
 - `receptorDefinitions: List<ReceptorDefinition>` - Template for receptors
 - `neuralNetworkTemplate: NeuralNetworkTemplate` - Graph structure
 - `vehicleRadius: double` - Size of vehicles of this species
 - `wheelBase: double` - Wheel separation
 - `maxSpeed: double` - Maximum speed
+- `sourcePackage: String` - Reference to reusable package (optional)
+- `editable: boolean` - Whether this species can be modified (false for package references)
 
 **Methods:**
 - `createVehicle(x, y, angle): Vehicle` - Instantiate a new vehicle
+- `createVehicle(x, y, angle, colorName): Vehicle` - Instantiate with specific color
 - `clone(): Species` - For mutations/variations
+
+**Additional Notes:**
+- Species can be defined inline in a simulation or referenced from a reusable package
+- If colorName is not set, each vehicle must specify its own color
+- Package-referenced species are read-only; clone to create editable variant
 
 ## Receptor
 **Properties:**
@@ -76,32 +100,47 @@
 - `angleTo: double` - End angle relative to vehicle heading (0 to 2π)
 - `maxRange: double` - Maximum detection distance
 - `sensitivity: double` - Sensitivity multiplier
+- `colorFilter: String` - Only detects objects of this color (named color)
+- `accumulatedLight: double` - Current accumulated light (capacitor charge)
+- `threshold: double` - Light threshold for firing
+- `willFireNextTick: boolean` - Whether receptor will fire on next clock tick
 
 **Methods:**
-- `sense(vehicle, arena): double` - Returns 0.0 to 1.0 based on detected brightness
+- `accumulateLight(vehicle, arena): void` - Accumulates light from matching-color objects
+- `checkThreshold(): void` - Checks if threshold exceeded, sets willFireNextTick, reduces charge
+- `reset(): void` - Clears fire state for new tick
 
 **Notes:**
-- Detects brightness of objects within angular range
-- Returns weighted sum of brightness * (1 - distance/maxRange)
+- Detects brightness only from objects matching colorFilter
+- Accumulates light: closer objects contribute more (brightness × (1 - distance/maxRange) × sensitivity)
+- When accumulatedLight >= threshold: willFireNextTick = true, accumulatedLight -= threshold
+- Fires once per threshold crossing, then charge reduced by threshold amount
+- Acts as capacitor, accumulating light over time until threshold is reached
 
 ## Neurode
 **Properties:**
 - `id: String` - Unique identifier within network
 - `type: NeurodeType` - INPUT, HIDDEN, OUTPUT
-- `threshold: double` - Activation threshold (optional, default 0.0)
-- `currentCharge: double` - Accumulated input (for threshold-based firing)
-- `decayRate: double` - How quickly charge decays (0.0 to 1.0)
+- `threshold: int` - Number of firing excitatory connections required to fire
+- `firedPreviousTick: boolean` - State from previous clock tick
+- `willFireNextTick: boolean` - Computed state for next clock tick
 - `inputConnections: List<Connection>` - Incoming connections
 - `outputConnections: List<Connection>` - Outgoing connections
 
 **Methods:**
-- `evaluate(inputs: Map<String, boolean>): boolean` - Returns whether neurode fires
-- `reset()` - Clear charge for new tick
+- `evaluate(): void` - Computes willFireNextTick based on previous tick states
+- `advanceTick(): void` - Moves willFireNextTick to firedPreviousTick for new tick
 
 **Types:**
 - `INPUT`: Connected to receptor or constant
 - `HIDDEN`: Internal processing
 - `OUTPUT`: Controls left/right motor
+
+**Firing Logic:**
+- Count how many EXCITER input connections fired on previous tick
+- If count >= threshold AND no INHIBITOR connections fired on previous tick: willFireNextTick = true
+- Otherwise: willFireNextTick = false
+- No accumulation across ticks; each tick is independent evaluation
 
 ## Connection
 **Properties:**
@@ -114,6 +153,97 @@
 **Types:**
 - `INHIBITOR`: If source fires, prevents target from firing this tick
 - `EXCITER`: If source fires, contributes to target activation
+
+## ColorDefinition
+**Properties:**
+- `name: String` - Color name (e.g., "red", "blue", "phototrope-color")
+- `r: int` - Red component (0-255)
+- `g: int` - Green component (0-255)
+- `b: int` - Blue component (0-255)
+
+**Methods:**
+- `toRGB(): Color` - Returns RGB color object
+- `toHex(): String` - Returns hex color string (#RRGGBB)
+
+**Additional Notes:**
+- Color definitions can be shared across simulations and packages
+- Named colors allow easy reference and consistent theming
+
+## Simulation
+**Properties:**
+- `id: String` - Unique simulation identifier
+- `name: String` - Human-readable simulation name
+- `arena: Arena` - The simulation arena
+- `colorDefinitions: Map<String, ColorDefinition>` - Named colors for this simulation
+- `species: List<Species>` - Species defined in or referenced by this simulation
+- `vehicles: List<Vehicle>` - Active vehicles
+- `staticObjects: List<StaticSimulationObject>` - Static objects
+- `collisionBehavior: CollisionBehavior` - Collision handling configuration
+- `threadCount: int` - Number of threads for parallel vehicle processing
+- `ticksPerSecond: int` - Target simulation speed
+- `deltaTime: double` - Time per tick in simulation units
+- `networkIterations: int` - Number of iterations for neural network evaluation
+- `clock: Clock` - Simulation clock
+- `running: boolean` - Whether simulation is currently running
+
+**Methods:**
+- `start(): void` - Start or resume simulation
+- `stop(): void` - Pause simulation
+- `step(): void` - Execute single tick
+- `reset(): void` - Reset to initial state
+- `addVehicle(vehicle): void` - Add vehicle to simulation
+- `removeVehicle(id): void` - Remove vehicle from simulation
+- `save(): void` - Persist simulation configuration to file
+
+**Additional Notes:**
+- Each simulation runs independently with its own thread pool
+- Multiple simulations can run concurrently
+- Simulations can reference species from reusable packages
+
+## CollisionBehavior
+**Properties:**
+- `defaultBehavior: CollisionMode` - Default collision handling (NONE, BREAK, BOUNCE)
+- `colorSpecificBehaviors: Map<String, CollisionMode>` - Per-color collision rules
+
+**Collision Modes:**
+- `NONE`: No collision detection; vehicles pass through objects (break at non-wrapping boundaries)
+- `BREAK`: Vehicles break (stop/destroy) when colliding with objects
+- `BOUNCE`: Vehicles bounce off objects
+
+**Methods:**
+- `getBehaviorForColor(colorName): CollisionMode` - Returns collision mode for specific color
+- `setColorBehavior(colorName, mode): void` - Configure per-color collision
+
+**Example:**
+```
+defaultBehavior: BOUNCE
+colorSpecificBehaviors: {
+  "blue": BREAK,     // Break blue lights
+  "red": NONE        // Pass through red vehicles
+}
+```
+
+## ReusablePackage
+**Properties:**
+- `id: String` - Unique package identifier
+- `name: String` - Package name
+- `version: String` - Package version
+- `description: String` - Package description
+- `colorDefinitions: Map<String, ColorDefinition>` - Named colors
+- `species: List<Species>` - Species definitions
+- `staticObjects: List<StaticSimulationObject>` - Reusable static object templates
+- `filePath: String` - Path to package file
+
+**Methods:**
+- `save(): void` - Write package to file
+- `load(filePath): ReusablePackage` - Load package from file
+- `export(filePath): void` - Export package for sharing
+
+**Additional Notes:**
+- Base package includes 6 original Braitenberg species
+- Packages are JSON files with .vsp (Vehicle Simulation Package) extension
+- Simulations reference package species by package:species pattern
+- Package contents are read-only; clone to create editable variants
 
 ## Clock
 **Properties:**
@@ -135,28 +265,44 @@
 
 ## Backend (Java)
 **Responsibilities:**
-- Simulation engine (core logic)
+- Multi-simulation management (multiple independent simulations)
+- Simulation engine (core logic for each simulation)
 - Physics calculations (vehicle movement, collisions)
 - Neural network processing (neurode firing, signal propagation)
-- Multi-threaded execution (parallel vehicle processing)
-- State management and history
+- Multi-threaded execution (configurable threads per simulation)
+- State management and persistence
 - WebSocket server for real-time updates
 - REST API for configuration and control
+- Package management (loading, saving, sharing species/objects)
+- Embedded Jetty web server
 
 **Key Components:**
-- `SimulationEngine`: Main orchestrator, clock management
+- `Application`: Main entry point, starts/stops Jetty server
+- `SimulationManager`: Manages multiple concurrent simulations
+- `SimulationEngine`: Main orchestrator for single simulation, clock management
 - `Arena`: World management, spatial indexing for collision detection
-- `VehicleProcessor`: Thread pool for parallel vehicle updates
-- `NeuralNetworkEvaluator`: Processes neurode graphs
-- `PhysicsEngine`: Movement, collision detection
+- `VehicleProcessor`: Thread pool for parallel vehicle updates (per simulation)
+- `NeuralNetworkEvaluator`: Processes neurode graphs with wave-based evaluation
+- `PhysicsEngine`: Movement, collision detection with configurable behavior
 - `WebSocketServer`: Broadcasts simulation state to connected clients
 - `APIController`: REST endpoints for control and configuration
+- `PackageRepository`: Loads and manages reusable packages
+- `PersistenceService`: Saves/loads simulations and packages
+
+**Multi-Simulation Architecture:**
+- Each simulation runs as independent long-running process
+- Simulations have unique IDs used in all API calls
+- Each simulation has its own thread pool (configurable size)
+- SimulationManager coordinates multiple simulations
+- WebSocket connections subscribe to specific simulation IDs
+- Multiple browser tabs can run different simulations
 
 **Concurrency Strategy:**
-- Each clock tick processes vehicles in parallel using thread pool
+- Each clock tick processes vehicles in parallel using simulation's thread pool
 - Vehicles read from shared state (arena, other objects)
 - Write updates to local buffers, then merge at end of tick
 - Lock-free or fine-grained locking for performance
+- Thread count configurable per simulation (default: CPU cores)
 
 ## Frontend (JavaScript)
 **Responsibilities:**
@@ -177,42 +323,91 @@
 ## Communication Protocol
 
 ### WebSocket (Real-time Updates)
+
+**Client → Server (Subscribe):**
+```json
+{
+  "type": "subscribe",
+  "simulationId": "sim_abc123"
+}
+```
+
 **Server → Client:**
 ```json
 {
   "type": "state_update",
+  "simulationId": "sim_abc123",
   "tick": 1234,
   "vehicles": [
-    {"id": "v1", "x": 100.5, "y": 200.3, "angle": 1.57, "color": "#FF0000", "brightness": 0.8}
+    {"id": "v1", "x": 100.5, "y": 200.3, "angle": 1.57, "colorName": "red", "brightness": 0.8}
   ],
   "staticObjects": [
-    {"id": "s1", "x": 50, "y": 50, "color": "#0000FF", "brightness": 1.0}
+    {"id": "s1", "x": 50, "y": 50, "colorName": "blue", "brightness": 1.0, "type": "POINT"}
   ]
 }
 ```
 
 ### REST API (Control & Configuration)
 
+**Note:** All simulation-specific endpoints include `{simulationId}` path parameter
+
+#### Simulation Management
+
+**POST /api/simulations**
+- Creates a new simulation
+- Body:
+```json
+{
+  "name": "My Simulation",
+  "arena": {"width": 1000, "height": 1000, "wrapEastWest": true, "wrapNorthSouth": false},
+  "threadCount": 4,
+  "ticksPerSecond": 30
+}
+```
+- Response: `{"id": "sim_abc123", "name": "My Simulation"}`
+
+**GET /api/simulations**
+- Lists all simulations
+- Response: `[{"id": "sim_1", "name": "My Simulation", "status": "running"}, ...]`
+
+**GET /api/simulations/{simulationId}**
+- Gets full simulation configuration
+- Response: Complete simulation definition
+
+**DELETE /api/simulations/{simulationId}**
+- Deletes simulation (must be stopped)
+- Response: `{"deleted": true}`
+
+**POST /api/simulations/{simulationId}/save**
+- Saves simulation configuration to file
+- Body: `{"filePath": "/path/to/save.vsim"}` (optional)
+- Response: `{"saved": true, "filePath": "/data/simulations/sim_abc123.vsim"}`
+
+**POST /api/simulations/load**
+- Loads simulation from file
+- Body: `{"filePath": "/path/to/simulation.vsim"}`
+- Response: `{"id": "sim_xyz789", "name": "Loaded Simulation"}`
+
 #### Simulation Control
 
-**POST /api/simulation/start**
+**POST /api/simulations/{simulationId}/start**
 - Starts or resumes simulation
 - Response: `{"status": "running", "tick": 123}`
 
-**POST /api/simulation/stop**
+**POST /api/simulations/{simulationId}/stop**
 - Pauses simulation
 - Response: `{"status": "paused", "tick": 123}`
 
-**POST /api/simulation/reset**
+**POST /api/simulations/{simulationId}/reset**
 - Resets simulation to initial state
 - Body: `{"keepEntities": false}` (optional)
 - Response: `{"status": "reset", "tick": 0}`
 
-**POST /api/simulation/step**
+**POST /api/simulations/{simulationId}/step**
 - Advances simulation by one tick
 - Response: `{"status": "paused", "tick": 124}`
 
-**GET /api/simulation/status**
+**GET /api/simulations/{simulationId}/status**
 - Gets current simulation state
 - Response:
 ```json
@@ -221,13 +416,19 @@
   "tick": 12345,
   "vehicleCount": 100,
   "ticksPerSecond": 30,
-  "actualTPS": 29.8
+  "actualTPS": 29.8,
+  "threadCount": 4
 }
 ```
 
+**PUT /api/simulations/{simulationId}/threadCount**
+- Updates thread count (can be done while running)
+- Body: `{"threadCount": 8}`
+- Response: `{"threadCount": 8}`
+
 #### Arena Configuration
 
-**GET /api/arena**
+**GET /api/simulations/{simulationId}/arena**
 - Gets arena configuration
 - Response:
 ```json
@@ -240,56 +441,82 @@
 }
 ```
 
-**PUT /api/arena**
+**PUT /api/simulations/{simulationId}/arena**
 - Updates arena configuration (requires stopped simulation)
 - Body: Same format as GET response
 
+#### Color Definitions
+
+**POST /api/simulations/{simulationId}/colors**
+- Creates a named color
+- Body: `{"name": "red", "r": 255, "g": 0, "b": 0}`
+- Response: `{"name": "red", "hex": "#FF0000"}`
+
+**GET /api/simulations/{simulationId}/colors**
+- Lists all color definitions
+- Response: `[{"name": "red", "r": 255, "g": 0, "b": 0}, ...]`
+
+**DELETE /api/simulations/{simulationId}/colors/{colorName}**
+- Deletes color definition (fails if in use)
+- Response: `{"deleted": true}`
+
 #### Species Management
 
-**POST /api/species**
+**POST /api/simulations/{simulationId}/species**
 - Creates a new species
 - Body:
 ```json
 {
   "name": "Phototrope",
+  "colorName": "red",
   "vehicleRadius": 5,
   "wheelBase": 8,
   "maxSpeed": 50,
   "receptors": [
-    {"id": "left", "angleFrom": 0.785, "angleTo": 1.57, "maxRange": 200, "sensitivity": 1.0},
-    {"id": "right", "angleFrom": -1.57, "angleTo": -0.785, "maxRange": 200, "sensitivity": 1.0}
+    {"id": "left", "angleFrom": 0.785, "angleTo": 1.57, "maxRange": 200, "sensitivity": 1.0, "colorFilter": "white", "threshold": 10.0},
+    {"id": "right", "angleFrom": -1.57, "angleTo": -0.785, "maxRange": 200, "sensitivity": 1.0, "colorFilter": "white", "threshold": 10.0}
   ],
   "neuralNetwork": {
     "neurodes": [
-      {"id": "input_left", "type": "INPUT", "threshold": 0.5},
-      {"id": "input_right", "type": "INPUT", "threshold": 0.5},
-      {"id": "output_left", "type": "OUTPUT"},
-      {"id": "output_right", "type": "OUTPUT"}
+      {"id": "input_left", "type": "INPUT", "threshold": 1},
+      {"id": "input_right", "type": "INPUT", "threshold": 1},
+      {"id": "output_left_motor", "type": "OUTPUT", "threshold": 1},
+      {"id": "output_right_motor", "type": "OUTPUT", "threshold": 1}
     ],
     "connections": [
-      {"from": "input_left", "to": "output_right", "type": "EXCITER", "weight": 1.0},
-      {"from": "input_right", "to": "output_left", "type": "EXCITER", "weight": 1.0}
+      {"from": "input_left", "to": "output_right_motor", "type": "EXCITER", "weight": 1.0},
+      {"from": "input_right", "to": "output_left_motor", "type": "EXCITER", "weight": 1.0}
     ]
   }
 }
 ```
 - Response: `{"id": "species_abc123", "name": "Phototrope"}`
 
-**GET /api/species**
-- Lists all species
-- Response: `[{"id": "species_1", "name": "Phototrope"}, ...]`
+**POST /api/simulations/{simulationId}/species/reference**
+- References species from package
+- Body: `{"packageId": "base", "speciesId": "phototrope"}`
+- Response: `{"id": "species_ref_123", "name": "Phototrope", "sourcePackage": "base"}`
 
-**GET /api/species/{id}**
+**GET /api/simulations/{simulationId}/species**
+- Lists all species (both defined and referenced)
+- Response: `[{"id": "species_1", "name": "Phototrope", "sourcePackage": "base"}, ...]`
+
+**GET /api/simulations/{simulationId}/species/{id}**
 - Gets species details
 - Response: Full species definition
 
-**DELETE /api/species/{id}**
-- Deletes species (fails if vehicles exist)
+**PUT /api/simulations/{simulationId}/species/{id}**
+- Updates species (only for non-package species)
+- Body: Same format as POST
+- Response: Updated species
+
+**DELETE /api/simulations/{simulationId}/species/{id}**
+- Deletes species (fails if vehicles exist or if package reference)
 - Response: `{"deleted": true}`
 
 #### Vehicle Management
 
-**POST /api/vehicles**
+**POST /api/simulations/{simulationId}/vehicles**
 - Adds vehicle(s) to simulation
 - Body:
 ```json
@@ -297,23 +524,24 @@
   "speciesId": "species_abc123",
   "vehicles": [
     {"x": 100, "y": 100, "angle": 0},
-    {"x": 200, "y": 200, "angle": 1.57}
+    {"x": 200, "y": 200, "angle": 1.57, "colorName": "blue"}
   ]
 }
 ```
 - Response: `{"created": ["v_1", "v_2"]}`
+- Note: colorName is optional if species has a color
 
-**GET /api/vehicles**
+**GET /api/simulations/{simulationId}/vehicles**
 - Lists all vehicles (lightweight)
 - Response:
 ```json
 [
-  {"id": "v_1", "speciesId": "species_abc123", "x": 105.3, "y": 102.1, "angle": 0.1},
+  {"id": "v_1", "speciesId": "species_abc123", "x": 105.3, "y": 102.1, "angle": 0.1, "colorName": "red"},
   ...
 ]
 ```
 
-**GET /api/vehicles/{id}**
+**GET /api/simulations/{simulationId}/vehicles/{id}**
 - Gets detailed vehicle state including neural network state
 - Response:
 ```json
@@ -323,59 +551,136 @@
   "x": 105.3,
   "y": 102.1,
   "angle": 0.1,
+  "colorName": "red",
   "leftMotorSpeed": 0.8,
   "rightMotorSpeed": 0.9,
-  "receptorValues": {"left": 0.3, "right": 0.7},
-  "neurodeStates": {"input_left": true, "output_right": true, ...}
+  "receptorStates": {
+    "left": {"accumulatedLight": 15.3, "willFireNextTick": true},
+    "right": {"accumulatedLight": 8.7, "willFireNextTick": false}
+  },
+  "neurodeStates": {
+    "input_left": {"firedPreviousTick": true, "willFireNextTick": true},
+    "output_right_motor": {"firedPreviousTick": true, "willFireNextTick": false}
+  }
 }
 ```
 
-**DELETE /api/vehicles/{id}**
+**DELETE /api/simulations/{simulationId}/vehicles/{id}**
 - Removes vehicle from simulation
 - Response: `{"deleted": true}`
 
 #### Static Objects
 
-**POST /api/objects**
+**POST /api/simulations/{simulationId}/objects**
 - Adds static object to arena
-- Body:
+- Body (Point):
 ```json
 {
+  "type": "POINT",
   "x": 500,
   "y": 500,
-  "shape": "circle",
   "radius": 20,
-  "color": "#FFFFFF",
+  "colorName": "white",
   "brightness": 1.0,
   "emitsBrightness": true
 }
 ```
+- Body (Wall):
+```json
+{
+  "type": "WALL",
+  "x": 100,
+  "y": 100,
+  "x2": 200,
+  "y2": 100,
+  "colorName": "gray",
+  "brightness": 0.0,
+  "emitsBrightness": false
+}
+```
 - Response: `{"id": "obj_xyz789"}`
 
-**GET /api/objects**
+**POST /api/simulations/{simulationId}/objects/reference**
+- References static object from package
+- Body: `{"packageId": "base", "objectId": "light_source"}`
+- Response: `{"id": "obj_ref_123", "sourcePackage": "base"}`
+
+**GET /api/simulations/{simulationId}/objects**
 - Lists all static objects
 - Response: Array of objects
 
-**DELETE /api/objects/{id}**
+**DELETE /api/simulations/{simulationId}/objects/{id}**
 - Removes static object
 - Response: `{"deleted": true}`
 
-#### Configuration
+#### Package Management
 
-**GET /api/configuration**
-- Gets simulation parameters
+**POST /api/packages**
+- Creates a new reusable package
+- Body:
+```json
+{
+  "name": "My Species Pack",
+  "version": "1.0.0",
+  "description": "Custom vehicle species"
+}
+```
+- Response: `{"id": "pkg_abc123", "name": "My Species Pack"}`
+
+**POST /api/packages/load**
+- Loads package from file
+- Body: `{"filePath": "/path/to/package.vsp"}`
+- Response: `{"id": "pkg_xyz789", "name": "Loaded Package"}`
+
+**GET /api/packages**
+- Lists all loaded packages
+- Response: `[{"id": "base", "name": "Base Package", "version": "1.0.0"}, ...]`
+
+**GET /api/packages/{packageId}**
+- Gets full package contents
+- Response: Complete package definition with species and objects
+
+**POST /api/packages/{packageId}/save**
+- Saves package to file
+- Body: `{"filePath": "/path/to/save.vsp"}` (optional)
+- Response: `{"saved": true, "filePath": "/data/packages/pkg_abc123.vsp"}`
+
+**POST /api/packages/{packageId}/species**
+- Adds species to package
+- Body: Same as species creation
+- Response: `{"id": "species_xyz", "packageId": "pkg_abc123"}`
+
+**POST /api/packages/{packageId}/objects**
+- Adds static object template to package
+- Body: Same as object creation
+- Response: `{"id": "obj_xyz", "packageId": "pkg_abc123"}`
+
+**POST /api/packages/{packageId}/colors**
+- Adds color definition to package
+- Body: `{"name": "custom-red", "r": 200, "g": 0, "b": 0}`
+- Response: `{"name": "custom-red", "packageId": "pkg_abc123"}`
+
+**DELETE /api/packages/{packageId}**
+- Unloads package (fails if referenced by simulations)
+- Response: `{"deleted": true}`
+
+#### Collision Behavior
+
+**GET /api/simulations/{simulationId}/collision-behavior**
+- Gets collision configuration
 - Response:
 ```json
 {
-  "ticksPerSecond": 30,
-  "deltaTime": 0.1,
-  "networkIterations": 10,
-  "broadcastThrottleFPS": 30
+  "defaultBehavior": "BOUNCE",
+  "colorSpecificBehaviors": {
+    "blue": "BREAK",
+    "red": "NONE"
+  }
 }
 ```
 
-**PUT /api/configuration**
-- Updates simulation parameters
+**PUT /api/simulations/{simulationId}/collision-behavior**
+- Updates collision configuration
 - Body: Same format as GET response
 
 ---
@@ -386,33 +691,39 @@
 
 **Runtime:**
 - Java 11 or higher (for var keyword, modern APIs)
-- Servlet API 4.0+ (javax.servlet or jakarta.servlet)
+- Embedded Jetty web server (no external server required)
 
 **Build Tool:**
 - Maven 3.6+
 - Standard directory structure: `src/main/java`, `src/main/resources`, `src/test/java`
+- Creates executable JAR with embedded Jetty
 
 **Web Server:**
-- Apache Tomcat 9.x or 10.x
-- Or Jetty 11.x (embedded or standalone)
+- Embedded Eclipse Jetty 11.x
+- Started/stopped programmatically from Java application
+- No WAR deployment needed
 
 **Dependencies (pom.xml):**
 ```xml
 <dependencies>
-  <!-- Servlet API -->
+  <!-- Embedded Jetty Server -->
   <dependency>
-    <groupId>javax.servlet</groupId>
-    <artifactId>javax.servlet-api</artifactId>
-    <version>4.0.1</version>
-    <scope>provided</scope>
+    <groupId>org.eclipse.jetty</groupId>
+    <artifactId>jetty-server</artifactId>
+    <version>11.0.18</version>
   </dependency>
 
-  <!-- WebSocket API -->
   <dependency>
-    <groupId>javax.websocket</groupId>
-    <artifactId>javax.websocket-api</artifactId>
-    <version>1.1</version>
-    <scope>provided</scope>
+    <groupId>org.eclipse.jetty</groupId>
+    <artifactId>jetty-servlet</artifactId>
+    <version>11.0.18</version>
+  </dependency>
+
+  <!-- Jetty WebSocket -->
+  <dependency>
+    <groupId>org.eclipse.jetty.websocket</groupId>
+    <artifactId>websocket-jetty-server</artifactId>
+    <version>11.0.18</version>
   </dependency>
 
   <!-- JSON Processing -->
@@ -436,19 +747,83 @@
 
   <!-- Testing -->
   <dependency>
-    <groupId>junit</groupId>
-    <artifactId>junit</artifactId>
-    <version>4.13.2</version>
+    <groupId>org.junit.jupiter</groupId>
+    <artifactId>junit-jupiter</artifactId>
+    <version>5.10.1</version>
     <scope>test</scope>
   </dependency>
 </dependencies>
+
+<build>
+  <plugins>
+    <!-- Create executable JAR -->
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-jar-plugin</artifactId>
+      <version>3.3.0</version>
+      <configuration>
+        <archive>
+          <manifest>
+            <mainClass>com.gerkenip.vehicles.Application</mainClass>
+          </manifest>
+        </archive>
+      </configuration>
+    </plugin>
+
+    <!-- Include dependencies -->
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-shade-plugin</artifactId>
+      <version>3.5.1</version>
+      <executions>
+        <execution>
+          <phase>package</phase>
+          <goals>
+            <goal>shade</goal>
+          </goals>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins>
+</build>
 ```
 
 **Key Libraries:**
 - **Gson** - JSON serialization/deserialization
-- **Java WebSocket API** - For real-time communication
+- **Jetty WebSocket** - For real-time communication
 - **java.util.concurrent** - Thread pools, concurrent collections
 - **SLF4J + Logback** - Logging
+
+**Application Entry Point:**
+```java
+public class Application {
+    public static void main(String[] args) throws Exception {
+        Server server = new Server(8080);
+
+        ServletContextHandler context = new ServletContextHandler();
+        context.setContextPath("/");
+
+        // Register servlets
+        context.addServlet(SimulationServlet.class, "/api/simulations/*");
+        context.addServlet(PackageServlet.class, "/api/packages/*");
+
+        // Configure WebSocket
+        JettyWebSocketServletContainerInitializer.configure(context, (servletContext, wsContainer) -> {
+            wsContainer.addMapping("/ws", SimulationWebSocket.class);
+        });
+
+        // Serve static files
+        ResourceHandler resourceHandler = new ResourceHandler();
+        resourceHandler.setResourceBase("frontend");
+        HandlerList handlers = new HandlerList();
+        handlers.setHandlers(new Handler[] { resourceHandler, context });
+
+        server.setHandler(handlers);
+        server.start();
+        server.join();
+    }
+}
+```
 
 ## Frontend (JavaScript)
 
@@ -479,16 +854,19 @@
 
 **Running Locally:**
 ```bash
-# Backend
-cd backend
+# Build and run
 mvn clean package
-mvn tomcat7:run
-# Or deploy target/vehicle-sim.war to Tomcat webapps/
+java -jar target/vehicles.jar
 
-# Frontend
-cd frontend
-python3 -m http.server 8080
-# Or use any static file server
+# The application will:
+# 1. Start embedded Jetty server on port 8080
+# 2. Load base package with default species
+# 3. Restore previously saved simulations (if any)
+# 4. Serve frontend from /frontend directory
+# 5. Expose REST API at /api/*
+# 6. Provide WebSocket endpoint at /ws
+
+# Access at http://localhost:8080
 ```
 
 ---
@@ -498,80 +876,96 @@ python3 -m http.server 8080
 ## Backend (Maven/Java)
 
 ```
-vehicle-simulation/
+vehicles/
 ├── pom.xml
 ├── src/
 │   ├── main/
 │   │   ├── java/
 │   │   │   └── com/
-│   │   │       └── vehiclesim/
-│   │   │           ├── model/              # Business objects
-│   │   │           │   ├── Arena.java
-│   │   │           │   ├── SimulationObject.java
-│   │   │           │   ├── StaticSimulationObject.java
-│   │   │           │   ├── Vehicle.java
-│   │   │           │   ├── Species.java
-│   │   │           │   ├── Receptor.java
-│   │   │           │   ├── Neurode.java
-│   │   │           │   ├── Connection.java
-│   │   │           │   └── NeurodeType.java (enum)
-│   │   │           │
-│   │   │           ├── engine/             # Simulation engine
-│   │   │           │   ├── SimulationEngine.java
-│   │   │           │   ├── Clock.java
-│   │   │           │   ├── VehicleProcessor.java
-│   │   │           │   ├── PhysicsEngine.java
-│   │   │           │   ├── NeuralNetworkEvaluator.java
-│   │   │           │   └── SpatialIndex.java
-│   │   │           │
-│   │   │           ├── servlet/            # HTTP endpoints
-│   │   │           │   ├── SimulationControlServlet.java
-│   │   │           │   ├── ArenaServlet.java
-│   │   │           │   ├── SpeciesServlet.java
-│   │   │           │   ├── VehicleServlet.java
-│   │   │           │   ├── StaticObjectServlet.java
-│   │   │           │   └── ConfigurationServlet.java
-│   │   │           │
-│   │   │           ├── websocket/          # WebSocket endpoint
-│   │   │           │   └── SimulationWebSocket.java
-│   │   │           │
-│   │   │           ├── service/            # Business logic
-│   │   │           │   ├── SimulationService.java
-│   │   │           │   ├── SpeciesService.java
-│   │   │           │   └── VehicleService.java
-│   │   │           │
-│   │   │           ├── repository/         # Data storage (in-memory for now)
-│   │   │           │   ├── SpeciesRepository.java
-│   │   │           │   ├── VehicleRepository.java
-│   │   │           │   └── StaticObjectRepository.java
-│   │   │           │
-│   │   │           └── util/               # Utilities
-│   │   │               ├── JsonUtil.java
-│   │   │               ├── MathUtil.java
-│   │   │               └── ValidationUtil.java
+│   │   │       └── gerkenip/
+│   │   │           └── vehicles/
+│   │   │               ├── Application.java          # Main entry point (starts Jetty)
+│   │   │               │
+│   │   │               ├── model/                    # Business objects
+│   │   │               │   ├── Arena.java
+│   │   │               │   ├── SimulationObject.java
+│   │   │               │   ├── StaticSimulationObject.java
+│   │   │               │   ├── Vehicle.java
+│   │   │               │   ├── Species.java
+│   │   │               │   ├── Receptor.java
+│   │   │               │   ├── Neurode.java
+│   │   │               │   ├── Connection.java
+│   │   │               │   ├── ColorDefinition.java
+│   │   │               │   ├── Simulation.java
+│   │   │               │   ├── CollisionBehavior.java
+│   │   │               │   ├── ReusablePackage.java
+│   │   │               │   ├── Clock.java
+│   │   │               │   └── NeurodeType.java (enum)
+│   │   │               │
+│   │   │               ├── engine/                   # Simulation engine
+│   │   │               │   ├── SimulationManager.java
+│   │   │               │   ├── SimulationEngine.java
+│   │   │               │   ├── VehicleProcessor.java
+│   │   │               │   ├── PhysicsEngine.java
+│   │   │               │   ├── NeuralNetworkEvaluator.java
+│   │   │               │   └── SpatialIndex.java
+│   │   │               │
+│   │   │               ├── servlet/                  # HTTP endpoints
+│   │   │               │   ├── SimulationServlet.java
+│   │   │               │   ├── PackageServlet.java
+│   │   │               │   └── ColorServlet.java
+│   │   │               │
+│   │   │               ├── websocket/                # WebSocket endpoint
+│   │   │               │   └── SimulationWebSocket.java
+│   │   │               │
+│   │   │               ├── service/                  # Business logic
+│   │   │               │   ├── SimulationService.java
+│   │   │               │   ├── SpeciesService.java
+│   │   │               │   ├── VehicleService.java
+│   │   │               │   └── PackageService.java
+│   │   │               │
+│   │   │               ├── repository/               # Data storage
+│   │   │               │   ├── SimulationRepository.java
+│   │   │               │   ├── SpeciesRepository.java
+│   │   │               │   ├── VehicleRepository.java
+│   │   │               │   ├── StaticObjectRepository.java
+│   │   │               │   └── PackageRepository.java
+│   │   │               │
+│   │   │               ├── persistence/              # Save/load functionality
+│   │   │               │   ├── PersistenceService.java
+│   │   │               │   ├── SimulationSerializer.java
+│   │   │               │   └── PackageSerializer.java
+│   │   │               │
+│   │   │               └── util/                     # Utilities
+│   │   │                   ├── JsonUtil.java
+│   │   │                   ├── MathUtil.java
+│   │   │                   └── ValidationUtil.java
 │   │   │
-│   │   ├── resources/
-│   │   │   ├── logback.xml               # Logging configuration
-│   │   │   └── simulation.properties     # Default parameters
-│   │   │
-│   │   └── webapp/
-│   │       └── WEB-INF/
-│   │           └── web.xml                # Servlet mappings
+│   │   └── resources/
+│   │       ├── logback.xml                           # Logging configuration
+│   │       └── packages/                             # Base species packages
+│   │           └── base.vsp                          # Base Braitenberg species
 │   │
 │   └── test/
 │       └── java/
 │           └── com/
-│               └── vehiclesim/
-│                   ├── model/
-│                   │   └── VehicleTest.java
-│                   ├── engine/
-│                   │   ├── PhysicsEngineTest.java
-│                   │   └── NeuralNetworkEvaluatorTest.java
-│                   └── util/
-│                       └── MathUtilTest.java
+│               └── gerkenip/
+│                   └── vehicles/
+│                       ├── model/
+│                       │   ├── VehicleTest.java
+│                       │   └── ReceptorTest.java
+│                       ├── engine/
+│                       │   ├── PhysicsEngineTest.java
+│                       │   └── NeuralNetworkEvaluatorTest.java
+│                       └── util/
+│                           └── MathUtilTest.java
 │
-└── target/                                 # Build output (generated)
-    └── vehicle-simulation.war
+├── data/                                             # Runtime data (created at runtime)
+│   ├── simulations/                                  # Saved simulation files (.vsim)
+│   └── packages/                                     # User-created packages (.vsp)
+│
+└── target/                                           # Build output (generated)
+    └── vehicles.jar                                  # Executable JAR with embedded Jetty
 ```
 
 ## Frontend (JavaScript)
@@ -595,80 +989,7 @@ frontend/
     └── icons/                              # UI icons if needed
 ```
 
-## Servlet Mapping (web.xml)
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee
-         http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-         version="4.0">
-
-  <display-name>Vehicle Simulation</display-name>
-
-  <!-- Simulation Control -->
-  <servlet>
-    <servlet-name>SimulationControlServlet</servlet-name>
-    <servlet-class>com.vehiclesim.servlet.SimulationControlServlet</servlet-class>
-  </servlet>
-  <servlet-mapping>
-    <servlet-name>SimulationControlServlet</servlet-name>
-    <url-pattern>/api/simulation/*</url-pattern>
-  </servlet-mapping>
-
-  <!-- Arena Configuration -->
-  <servlet>
-    <servlet-name>ArenaServlet</servlet-name>
-    <servlet-class>com.vehiclesim.servlet.ArenaServlet</servlet-class>
-  </servlet>
-  <servlet-mapping>
-    <servlet-name>ArenaServlet</servlet-name>
-    <url-pattern>/api/arena</url-pattern>
-  </servlet-mapping>
-
-  <!-- Species Management -->
-  <servlet>
-    <servlet-name>SpeciesServlet</servlet-name>
-    <servlet-class>com.vehiclesim.servlet.SpeciesServlet</servlet-class>
-  </servlet>
-  <servlet-mapping>
-    <servlet-name>SpeciesServlet</servlet-name>
-    <url-pattern>/api/species/*</url-pattern>
-  </servlet-mapping>
-
-  <!-- Vehicle Management -->
-  <servlet>
-    <servlet-name>VehicleServlet</servlet-name>
-    <servlet-class>com.vehiclesim.servlet.VehicleServlet</servlet-class>
-  </servlet>
-  <servlet-mapping>
-    <servlet-name>VehicleServlet</servlet-name>
-    <url-pattern>/api/vehicles/*</url-pattern>
-  </servlet-mapping>
-
-  <!-- Static Objects -->
-  <servlet>
-    <servlet-name>StaticObjectServlet</servlet-name>
-    <servlet-class>com.vehiclesim.servlet.StaticObjectServlet</servlet-class>
-  </servlet>
-  <servlet-mapping>
-    <servlet-name>StaticObjectServlet</servlet-name>
-    <url-pattern>/api/objects/*</url-pattern>
-  </servlet-mapping>
-
-  <!-- Configuration -->
-  <servlet>
-    <servlet-name>ConfigurationServlet</servlet-name>
-    <servlet-class>com.vehiclesim.servlet.ConfigurationServlet</servlet-class>
-  </servlet>
-  <servlet-mapping>
-    <servlet-name>ConfigurationServlet</servlet-name>
-    <url-pattern>/api/configuration</url-pattern>
-  </servlet-mapping>
-
-</web-app>
-```
+**Note:** No web.xml needed! Servlets and WebSockets are registered programmatically in Application.java using Jetty's API.
 
 ---
 
@@ -704,46 +1025,104 @@ y = y + linearVelocity × sin(angle) × dt
 ## Collision Detection
 
 **Wall Collisions:**
-- If wrapping disabled: vehicle stops at boundary
-- If wrapping enabled: position wraps to opposite side
+- If wrapping disabled: vehicle breaks at boundary (regardless of collision mode)
+- If wrapping enabled: position wraps to opposite side (toroidal arena)
 
 **Object Collisions:**
-- Simple circle-circle collision for now
-- When collision detected:
-  - Vehicle stops (velocity = 0)
-  - Option: bounce back slightly
-  - Option: trigger "collision event" for future fitness functions
+- Collision behavior determined by CollisionBehavior configuration
+- Can be configured globally (defaultBehavior) or per-color (colorSpecificBehaviors)
+- Collision detection based on vehicle color vs object color
+
+**Collision Modes:**
+
+**NONE:**
+- No collision detection; vehicles pass through objects
+- Vehicles still break at non-wrapping arena boundaries
+
+**BREAK:**
+- When collision detected: vehicle stops permanently (breaks)
+- Vehicle removed from simulation or marked as broken
+
+**BOUNCE:**
+- When collision detected: vehicle bounces off object
+- Reverse direction: `angle = angle + π`
+- Optional: reduce speed or reverse motors briefly
+
+**Per-Color Configuration Example:**
+```
+defaultBehavior: BOUNCE
+colorSpecificBehaviors: {
+  "blue": BREAK,     // Break when hitting blue objects
+  "red": NONE        // Pass through red vehicles
+}
+```
+
+**Collision Detection for Walls:**
+- Line segment (wall) to circle (vehicle) collision detection
+- Calculate distance from vehicle center to line segment
+- Collision if distance < vehicle radius
 
 **Optimization:**
 - Use spatial partitioning (grid or quadtree) for large simulations
 - Only check nearby objects, not all N vehicles
+- Pre-filter by color if collision mode is NONE for that color
 
-## Receptor Sensing
+## Receptor Sensing (Capacitor Model)
 
-Each receptor detects brightness in an angular wedge:
+Each receptor acts as a **capacitor** that accumulates light over time and fires when a threshold is reached.
 
-**Algorithm:**
+**Capacitor Algorithm (per tick):**
 ```
-For each SimulationObject in arena:
-  1. Calculate relative angle from vehicle to object
-  2. Normalize to vehicle's reference frame (subtract vehicle.angle)
-  3. Check if angle is within [receptor.angleFrom, receptor.angleTo]
-  4. If yes, calculate distance
-  5. If distance < receptor.maxRange:
-     contribution = object.brightness × (1 - distance/maxRange) × receptor.sensitivity
-  6. Sum all contributions
-  7. Clamp result to [0.0, 1.0]
+1. For each SimulationObject in arena:
+   a. Check if object.colorName matches receptor.colorFilter
+      - If no match, skip this object (color filtering)
+
+   b. Calculate relative angle from vehicle to object
+   c. Normalize to vehicle's reference frame (subtract vehicle.angle)
+   d. Check if angle is within [receptor.angleFrom, receptor.angleTo]
+
+   e. If yes, calculate distance
+   f. If distance < receptor.maxRange:
+      contribution = object.brightness × (1 - distance/maxRange) × receptor.sensitivity
+      receptor.accumulatedLight += contribution
+
+2. Check if threshold exceeded:
+   if receptor.accumulatedLight >= receptor.threshold:
+      receptor.willFireNextTick = true
+      receptor.accumulatedLight -= receptor.threshold
+   else:
+      receptor.willFireNextTick = false
+
+3. On next tick, receptor fires if willFireNextTick == true
 ```
+
+**Key Properties:**
+- **accumulatedLight**: Accumulates over multiple ticks (persists between ticks)
+- **threshold**: Light level required to fire
+- **colorFilter**: Only detects objects of matching color name
+- **willFireNextTick**: Boolean flag for next tick's INPUT neurode
 
 **Example:**
-- Vehicle at (100, 100) facing east (angle = 0)
-- Receptor: angleFrom = -π/4, angleTo = π/4 (45° cone ahead)
-- Bright object at (150, 110)
-- Object is within cone and range → receptor returns value > 0
+```
+Receptor threshold: 20.0
+Tick 1: Detect light +5.0 → accumulatedLight = 5.0 (no fire)
+Tick 2: Detect light +7.0 → accumulatedLight = 12.0 (no fire)
+Tick 3: Detect light +10.0 → accumulatedLight = 22.0 (≥ 20.0)
+        → willFireNextTick = true
+        → accumulatedLight = 22.0 - 20.0 = 2.0 (charge reduced by threshold)
+Tick 4: Receptor fires (INPUT neurode = true)
+        Detect light +3.0 → accumulatedLight = 5.0 (no fire this tick)
+```
+
+**Color Filtering:**
+- Receptor only "sees" objects with colorName matching colorFilter
+- Different receptors can detect different colors
+- Example: left receptor detects "red", right receptor detects "blue"
 
 **Optimization:**
 - Use spatial queries to get only nearby objects
-- Pre-filter by distance before angular checks
+- Pre-filter by color before distance/angle checks
+- Skip objects with non-matching colors entirely
 
 ## Constants and Units
 
@@ -784,90 +1163,148 @@ Each vehicle has a neural network instance based on its species template:
 - Can form loops and cycles
 - Provide computation and memory
 
-## Evaluation Algorithm
+## Evaluation Algorithm (Wave-Based Synchronous Model)
 
-The network is evaluated once per clock tick using a **synchronous update** model:
+The network is evaluated once per clock tick using a **wave-based synchronous update** model where signals propagate through the network in discrete waves.
+
+**Key Principle:** All neurodes use the **previous tick's firing states** to compute **next tick's firing states**. This creates synchronized waves of activation propagating through the network.
 
 ```
-1. Read sensor inputs
+1. Read sensor inputs (happens at end of previous tick)
    - For each receptor:
-     - sensorValue = receptor.sense(vehicle, arena)
-     - if sensorValue > threshold: set INPUT neurode to TRUE
-     - else: set INPUT neurode to FALSE
+     - receptor.accumulateLight(vehicle, arena)
+     - receptor.checkThreshold()
+     - receptor fires on NEXT tick if willFireNextTick == true
 
-2. Evaluate network (fixed number of iterations to handle loops)
-   - For iteration 1 to maxIterations (e.g., 10):
-     a. For each neurode in topological order (or all if cyclic):
-        - Check all input connections
-        - If any INHIBITOR connection has firing source:
-          → neurode does not fire
-        - Else:
-          → count firing EXCITER connections
-          → if threshold mode:
-            - add weights to currentCharge
-            - apply decay: currentCharge *= (1 - decayRate)
-            - if currentCharge >= threshold: neurode fires
-          → if simple mode:
-            - if any EXCITER fired: neurode fires
+2. Advance tick (synchronous state transition)
+   - For each neurode (including INPUTs from receptors):
+     - neurode.firedPreviousTick = neurode.willFireNextTick
+     - This creates the "wave" - all neurons update simultaneously
 
-     b. Update neurode states for next iteration
+3. Evaluate network for next tick (all neurodes in parallel)
+   - For each neurode (HIDDEN and OUTPUT types):
+     a. Count firing EXCITER connections from previous tick:
+        exciters = 0
+        for each input connection c:
+          if c.type == EXCITER AND c.fromNeurode.firedPreviousTick == true:
+            exciters++
 
-3. Read output neurodes
-   - leftMotorSpeed = LEFT_MOTOR.firing ? 1.0 : 0.0
-   - rightMotorSpeed = RIGHT_MOTOR.firing ? 1.0 : 0.0
-   - (Alternative: use charge value as analog output)
+     b. Check for INHIBITOR veto:
+        inhibited = false
+        for each input connection c:
+          if c.type == INHIBITOR AND c.fromNeurode.firedPreviousTick == true:
+            inhibited = true
+            break
 
-4. Apply motor speeds to vehicle
+     c. Determine if neurode will fire next tick:
+        if inhibited:
+          neurode.willFireNextTick = false
+        else if exciters >= neurode.threshold:
+          neurode.willFireNextTick = true
+        else:
+          neurode.willFireNextTick = false
+
+4. Read output neurodes (use current tick's firing state)
+   - leftMotorSpeed = output_left_motor.firedPreviousTick ? 1.0 : 0.0
+   - rightMotorSpeed = output_right_motor.firedPreviousTick ? 1.0 : 0.0
+
+5. Apply motor speeds to vehicle
    - vehicle.leftMotorSpeed = leftMotorSpeed
    - vehicle.rightMotorSpeed = rightMotorSpeed
 ```
 
+**Wave Propagation Example:**
+```
+Network: receptor → hidden → output_motor
+
+Tick 1:
+  - Receptor accumulates light, exceeds threshold
+  - receptor.willFireNextTick = true
+
+Tick 2 (advance):
+  - receptor.firedPreviousTick = true (WAVE 1)
+  - hidden evaluates: sees receptor fired previous tick
+  - hidden.willFireNextTick = true
+
+Tick 3 (advance):
+  - receptor.firedPreviousTick = false (light consumed)
+  - hidden.firedPreviousTick = true (WAVE 2)
+  - output_motor evaluates: sees hidden fired previous tick
+  - output_motor.willFireNextTick = true
+
+Tick 4 (advance):
+  - hidden.firedPreviousTick = false
+  - output_motor.firedPreviousTick = true (WAVE 3)
+  - Motors activate!
+
+Signal took 3 ticks to propagate from receptor to motor
+```
+
 ## Handling Cycles and Loops
 
-**Challenge:** Neurodes can form cycles (A → B → C → A), creating feedback loops.
+**Wave-Based Model Naturally Handles Cycles:**
 
-**Solution Options:**
+The wave-based synchronous model handles cycles elegantly because:
+- All neurodes update simultaneously using previous tick states
+- No need for iteration loops or convergence detection
+- Cycles create feedback with 1-tick delay per cycle
+- Predictable, deterministic behavior
 
-### Option 1: Fixed Iterations (Recommended)
-- Run network evaluation for fixed number of steps (e.g., 10)
-- Allows signals to propagate through loops
-- Predictable performance
-- Simple to implement and parallelize
+**Cycle Example:**
+```
+Network: A → B → C → A (3-neurode cycle)
 
-### Option 2: Convergence Detection
-- Run until network state stops changing
-- More accurate but unpredictable timing
-- Add max iteration limit as safety
+Tick 1: A fires
+Tick 2: B fires (saw A fire previous tick)
+Tick 3: C fires (saw B fire previous tick)
+Tick 4: A fires again (saw C fire previous tick) - cycle complete!
 
-### Option 3: Async Update
-- Update neurodes in random order
-- More biologically realistic
-- Harder to parallelize
+Signal circulates through cycle continuously with 3-tick period
+```
 
-**Recommendation:** Use Option 1 (fixed iterations) for simplicity and performance.
+**Self-Loop Example:**
+```
+Network: A → A (self-connection)
 
-## Neurode Firing Modes
+If A fires on tick N:
+  - On tick N+1: A evaluates and sees itself fired on tick N
+  - If threshold = 1 and connection is EXCITER: A fires again on tick N+1
+  - Creates oscillation or sustained firing
 
-### Simple Binary Mode
-- Neurode fires if any EXCITER is active AND no INHIBITOR is active
-- No threshold, no accumulation
-- Immediate response
+This provides memory and temporal dynamics!
+```
 
-### Threshold/Capacitor Mode
-- Neurode accumulates charge from EXCITER connections (weighted)
-- Charge decays each iteration: `charge *= (1 - decayRate)`
-- Fires when `charge >= threshold`
-- Provides temporal dynamics and memory
+**Benefits:**
+- No iteration limit needed
+- Fully parallelizable (all neurodes evaluated independently)
+- Predictable performance (O(1) per tick, not O(iterations))
+- Natural feedback loops and memory
+
+## Neurode Firing Mode
+
+**Integer Threshold Counting:**
+- Neurode counts how many EXCITER connections fired on previous tick
+- If count >= threshold AND no INHIBITOR fired: neurode fires next tick
+- No accumulation across ticks; each tick is independent evaluation
+- Simple, deterministic, predictable
 
 **Example:**
 ```
-threshold = 2.0
-decayRate = 0.3
+Neurode X has threshold = 2
+Input connections:
+  - A → X (EXCITER)
+  - B → X (EXCITER)
+  - C → X (EXCITER)
+  - D → X (INHIBITOR)
 
-Tick 1: exciter fires (weight 1.0) → charge = 1.0 (below threshold, no fire)
-Tick 2: exciter fires (weight 1.0) → charge = 1.0×0.7 + 1.0 = 1.7 (no fire)
-Tick 3: exciter fires (weight 1.0) → charge = 1.7×0.7 + 1.0 = 2.19 (FIRES!)
-Tick 4: no input → charge = 2.19×0.7 = 1.53 (no fire)
+Tick 1: A fires, B does not fire
+  → exciters = 1 (< threshold 2) → X does not fire next tick
+
+Tick 2: A fires, B fires, C does not fire
+  → exciters = 2 (>= threshold 2) → X fires next tick
+
+Tick 3: A fires, B fires, D fires
+  → exciters = 2, but INHIBITOR fired → X does not fire next tick
 ```
 
 ## Neural Network Representation
@@ -877,24 +1314,36 @@ Tick 4: no input → charge = 2.19×0.7 = 1.53 (no fire)
 {
   "species_id": "species_1",
   "neurodes": [
-    {"id": "input_1", "type": "INPUT", "threshold": 0.5},
-    {"id": "hidden_1", "type": "HIDDEN", "threshold": 1.5, "decayRate": 0.2},
-    {"id": "output_left", "type": "OUTPUT", "threshold": 1.0}
+    {"id": "input_left", "type": "INPUT", "threshold": 1},
+    {"id": "input_right", "type": "INPUT", "threshold": 1},
+    {"id": "bias", "type": "INPUT", "threshold": 0},
+    {"id": "hidden_1", "type": "HIDDEN", "threshold": 2},
+    {"id": "output_left_motor", "type": "OUTPUT", "threshold": 1},
+    {"id": "output_right_motor", "type": "OUTPUT", "threshold": 1}
   ],
   "connections": [
-    {"from": "input_1", "to": "hidden_1", "type": "EXCITER", "weight": 1.0},
-    {"from": "hidden_1", "to": "output_left", "type": "EXCITER", "weight": 0.8},
-    {"from": "hidden_1", "to": "hidden_1", "type": "EXCITER", "weight": 0.3}
+    {"id": "c1", "from": "input_left", "to": "output_right_motor", "type": "EXCITER", "weight": 1.0},
+    {"id": "c2", "from": "input_right", "to": "output_left_motor", "type": "EXCITER", "weight": 1.0},
+    {"id": "c3", "from": "bias", "to": "output_left_motor", "type": "EXCITER", "weight": 1.0},
+    {"id": "c4", "from": "hidden_1", "to": "hidden_1", "type": "EXCITER", "weight": 1.0}
   ]
 }
 ```
 
+**Notes:**
+- Thresholds are integers (count of excitatory connections)
+- Weights are present but not currently used (reserved for future analog mode)
+- INPUT neurodes for receptors have threshold >= 1 (typically 1)
+- Bias INPUT has threshold 0 (always fires)
+
 ## Future Extensions
 
-- **Analog outputs:** Use charge level (0.0 to 1.0) instead of binary for motor control
+- **Analog outputs:** Use weighted sum instead of binary counting for motor control
+- **Weighted thresholds:** Use connection weights in threshold calculation
 - **Learning:** Adjust weights based on fitness/rewards (genetic algorithm, reinforcement learning)
 - **Neurotransmitter types:** Multiple signal types beyond excite/inhibit
 - **Plasticity:** Connections strengthen/weaken during simulation
+- **Variable receptor decay:** Add decay rate to receptor capacitors
 
 ---
 
