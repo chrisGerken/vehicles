@@ -1,44 +1,5 @@
 # Vehicle Simulation Design Document
 
-**Implementation Status:** ✅ Core engine and minimal viable product complete (January 2025)
-
-## Implementation Summary
-
-This design document describes the complete vision for the vehicle simulation system. The **current implementation** includes:
-
-**✅ Fully Implemented:**
-- All core business object models (Arena, Vehicle, Species, Receptor, Neurode, Connection, etc.)
-- Wave-based neural network evaluation engine
-- Differential drive physics with collision detection
-- Embedded Jetty 11 server with REST API and WebSocket
-- Frontend with Canvas rendering and controls
-- 6 Braitenberg species in base package (base.vsp)
-- Single simulation management via SimulationService
-
-**⏳ Designed But Not Implemented:**
-- Multi-simulation concurrent execution (SimulationManager)
-- Persistence layer (save/load to .vsim files)
-- Package management API (load/save .vsp files dynamically)
-- Repository layer for data storage
-- Thread pool per simulation
-- Advanced metrics and monitoring
-
-**File Count:**
-- 36 Java source files (models, engine, servlets, utilities)
-- 4 JavaScript files (api-client, websocket-client, renderer, main)
-- 1 species package (base.vsp with 6 species)
-
-**Key Implementation Files:**
-- `Application.java` - Main entry point, starts Jetty
-- `SimulationEngine.java` - Core tick orchestration
-- `NeuralNetworkEvaluator.java` - Wave-based network evaluation
-- `PhysicsEngine.java` - Differential drive kinematics
-- `Receptor.java` - Capacitor-based light sensing
-- `SimulationServlet.java` - REST API endpoints
-- `SimulationWebSocket.java` - Real-time state broadcasting
-- `frontend/js/renderer.js` - Canvas visualization
-
----
 
 # Simulation Business Objects
 
@@ -50,11 +11,6 @@ This design document describes the complete vision for the vehicle simulation sy
 - `wrapNorthSouth: boolean` - Whether north/south edges wrap (toroidal)
 - `backgroundColor: Color` - Background color for rendering
 
-**Methods:**
-- `normalizePosition(x, y): Point` - Wraps coordinates if wrapping enabled
-- `getObjectsInRadius(x, y, radius): List<SimulationObject>` - Spatial query
-- `checkCollision(vehicle): boolean` - Check if vehicle hits wall or object
-
 ## SimulationObject (Abstract)
 **Properties:**
 - `id: String` - Unique identifier
@@ -64,119 +20,51 @@ This design document describes the complete vision for the vehicle simulation sy
 - `brightness: double` - Brightness level (0.0 to 1.0)
 - `radius: double` - Collision radius (0 for point sources)
 
-**Methods:**
-- `getBoundingBox(): Rectangle` - For collision detection
-- `distanceTo(other: SimulationObject): double` - Distance calculation
-- `getColor(): Color` - Resolves color name to RGB color
-
 ## StaticSimulationObject
 **Inherits from:** SimulationObject
 
 **Properties:**
-- `type: ObjectType` - POINT or WALL
-- `x2: double` - End X coordinate (for WALL type only)
-- `y2: double` - End Y coordinate (for WALL type only)
-- `emitsBrightness: boolean` - Whether it's a light source
 
-**Types:**
-- `POINT`: Point light source at (x, y) with specified radius (can be 0)
-- `WALL`: Line segment from (x, y) to (x2, y2)
-
-**Additional Notes:**
-- Immutable position after creation
-- Can be used as obstacles or light sources for receptors
-- Point sources emit brightness; walls typically used as obstacles
-- Walls can be packaged and reused across simulations
 
 ## Vehicle
 **Inherits from:** SimulationObject
 
 **Properties:**
 - `angle: double` - Heading in radians (0 to 2π)
-- `leftMotorSpeed: double` - Left wheel speed (-1.0 to 1.0)
-- `rightMotorSpeed: double` - Right wheel speed (-1.0 to 1.0)
-- `wheelBase: double` - Distance between left and right wheels
-- `maxSpeed: double` - Maximum forward speed
-- `species: Species` - Reference to species definition
-- `colorName: String` - Vehicle-specific color (optional, overrides species color)
 - `receptors: List<Receptor>` - Sensor array (defined by species)
 - `neuralNetwork: NeuralNetworkInstance` - Instance of species neural network
+- `leftDriverId: String` - The id of the NetworkNode whose firing causes the left wheel (motor) to turn
+- `rightDriverId: String` - The id of the NetworkNode whose firing causes the right wheel (motor) to turn
 
-**Methods:**
-- `updateMotorSpeeds()` - Called after neural network evaluation
-- `updatePosition(deltaTime)` - Physics integration
-- `sense(): Map<Receptor, double>` - Read all receptor values
-- `getEffectiveColor(): String` - Returns vehicle color if set, otherwise species color
-
-**Additional Notes:**
-- If species has a color, vehicle inherits it unless vehicle-specific color is set
-- If species has no color, vehicle MUST have its own color specified
-
-## Species
+## NetworkNode
 **Properties:**
 - `id: String` - Unique identifier
-- `name: String` - Human-readable name
-- `colorName: String` - Default color for vehicles (optional)
-- `receptorDefinitions: List<ReceptorDefinition>` - Template for receptors
-- `neuralNetworkTemplate: NeuralNetworkTemplate` - Graph structure
-- `vehicleRadius: double` - Size of vehicles of this species
-- `wheelBase: double` - Wheel separation
-- `maxSpeed: double` - Maximum speed
-- `sourcePackage: String` - Reference to reusable package (optional)
-- `editable: boolean` - Whether this species can be modified (false for package references)
+- `firedPreviousTick: boolean` - State from previous clock tick
+- `willFireNextTick: boolean` - Computed state for next clock tick
 
-**Methods:**
-- `createVehicle(x, y, angle): Vehicle` - Instantiate a new vehicle
-- `createVehicle(x, y, angle, colorName): Vehicle` - Instantiate with specific color
-- `clone(): Species` - For mutations/variations
-
-**Additional Notes:**
-- Species can be defined inline in a simulation or referenced from a reusable package
-- If colorName is not set, each vehicle must specify its own color
-- Package-referenced species are read-only; clone to create editable variant
 
 ## Receptor
+**Inherits from:** NetworkNode
 **Properties:**
-- `id: String` - Unique identifier
 - `angleFrom: double` - Start angle relative to vehicle heading (0 to 2π)
 - `angleTo: double` - End angle relative to vehicle heading (0 to 2π)
-- `maxRange: double` - Maximum detection distance
-- `sensitivity: double` - Sensitivity multiplier
 - `colorFilter: String` - Only detects objects of this color (named color)
 - `accumulatedLight: double` - Current accumulated light (capacitor charge)
 - `threshold: double` - Light threshold for firing
-- `willFireNextTick: boolean` - Whether receptor will fire on next clock tick
-
-**Methods:**
-- `accumulateLight(vehicle, arena): void` - Accumulates light from matching-color objects
-- `checkThreshold(): void` - Checks if threshold exceeded, sets willFireNextTick, reduces charge
-- `reset(): void` - Clears fire state for new tick
 
 **Notes:**
-- Detects brightness only from objects matching colorFilter
+- Detects brightness only from objects matching colorFilter. 
 - Accumulates light: closer objects contribute more (brightness × (1 - distance/maxRange) × sensitivity)
 - When accumulatedLight >= threshold: willFireNextTick = true, accumulatedLight -= threshold
 - Fires once per threshold crossing, then charge reduced by threshold amount
 - Acts as capacitor, accumulating light over time until threshold is reached
 
 ## Neurode
+**Inherits from:** NetworkNode
 **Properties:**
 - `id: String` - Unique identifier within network
-- `type: NeurodeType` - INPUT, HIDDEN, OUTPUT
 - `threshold: int` - Number of firing excitatory connections required to fire
-- `firedPreviousTick: boolean` - State from previous clock tick
-- `willFireNextTick: boolean` - Computed state for next clock tick
-- `inputConnections: List<Connection>` - Incoming connections
-- `outputConnections: List<Connection>` - Outgoing connections
-
-**Methods:**
-- `evaluate(): void` - Computes willFireNextTick based on previous tick states
-- `advanceTick(): void` - Moves willFireNextTick to firedPreviousTick for new tick
-
-**Types:**
-- `INPUT`: Connected to receptor or constant
-- `HIDDEN`: Internal processing
-- `OUTPUT`: Controls left/right motor
+- `inputs: List<Connection>` - Incoming connections
 
 **Firing Logic:**
 - Count how many EXCITER input connections fired on previous tick
@@ -227,6 +115,9 @@ This design document describes the complete vision for the vehicle simulation sy
 - `networkIterations: int` - Number of iterations for neural network evaluation
 - `clock: Clock` - Simulation clock
 - `running: boolean` - Whether simulation is currently running
+- `leftMotorSpeed: double` - Left wheel speed (-1.0 to 1.0)
+- `rightMotorSpeed: double` - Right wheel speed (-1.0 to 1.0)
+- `wheelBase: double` - Distance between left and right wheels
 
 **Methods:**
 - `start(): void` - Start or resume simulation
